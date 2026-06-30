@@ -1,0 +1,584 @@
+---
+title: "Exploratory Data Analysis"
+Author: "Rizwan"
+Date: 26/04/2023
+output: html_document
+  
+Registration Number: '2201583'
+---
+# Registration Number: 2201583
+
+## Loading Libraries
+
+```{r}
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(leaflet)
+library(magrittr)
+library(reshape2)
+library(leaflet)
+
+```
+
+
+## Loading the Dataset
+```{r}
+#First we are loading our dataset 
+data <- read.csv("F://data_exploration//dataset//police_Dataset.csv")
+head(data)
+```
+
+## Data Preprocessing
+
+We will remove the first row of dataset because it is repeating the main headings.
+```{r}
+#removing first row
+data <- data[-1, ]
+head(data)
+```
+```{r}
+#checking the dimensions of the data how many rows and columns are present.
+dim(data)
+```
+We have total 2383 rows and 47 columns
+
+
+```{r}
+#lets check the datatypes ofcolumns by using str function
+str(data)
+```
+The all columns are on char datatype we need to change their datatypes.before that its a time series dataset so we need to find is there any missing values in date and time or not.
+```{r}
+Itime_na <- sum(data$INCIDENT_TIME == "NULL", na.rm = TRUE)
+cat("Number of Null values in INCIDENT_TIME are: ",Itime_na)
+```
+```{r}
+Idate_na <- sum(data$INCIDENT_DATE == "NULL", na.rm = TRUE)
+cat("Number of Null values in INCIDENT_DATE are: ",Idate_na)
+```
+There is 10 Null values in INCIDENT_TIME column so we use complete.cases function to identify rows with complete data.
+```{r}
+data$INCIDENT_TIME <- ifelse(data$INCIDENT_TIME == "NULL", NA, data$INCIDENT_TIME)
+data <- data[complete.cases(data$INCIDENT_TIME),]
+
+Itime_na <- sum(data$INCIDENT_TIME == "NULL", na.rm = TRUE)
+cat("Number of Null values in INCIDENT_TIME are: ",Itime_na)
+```
+#### Converting Datatypes
+```{r}
+#lets convert the data type of date and time and combining 2 columns date and time and make it as a one column.
+data$INCIDENT_DATETIME <- as.POSIXct(paste(data$INCIDENT_DATE, data$INCIDENT_TIME), 
+                                     format="%m/%d/%Y %I:%M:%S %p", tz="UTC")
+data$INCIDENT_DATETIME <- format(data$INCIDENT_DATETIME, "%y-%m-%d %H:%M:%S")
+data <- data %>% select(-c(INCIDENT_DATE, INCIDENT_TIME))
+data$INCIDENT_DATETIME <- as.POSIXct(data$INCIDENT_DATETIME, format = "%y-%m-%d %H:%M:%S")
+
+
+
+# converting Officer hire date column into date format
+data$OFFICER_HIRE_DATE <- as.Date(data$OFFICER_HIRE_DATE, format="%m/%d/%Y")
+data$OFFICER_HIRE_DATE <- format(data$OFFICER_HIRE_DATE, "%y-%m-%d")
+data$OFFICER_HIRE_DATE <- as.POSIXct(data$OFFICER_HIRE_DATE, format = "%y-%m-%d")
+```
+
+```{r}
+
+#Now we are converting all the columns which has to be int data type
+data$OFFICER_ID <- as.integer(data$OFFICER_ID)
+data$OFFICER_YEARS_ON_FORCE <- as.integer(data$OFFICER_YEARS_ON_FORCE)
+data$SUBJECT_ID <- as.integer(data$SUBJECT_ID)
+data$REPORTING_AREA <- as.integer(data$REPORTING_AREA)
+data$BEAT <- as.integer(data$BEAT)
+data$SECTOR <- as.integer(data$SECTOR)
+data$STREET_NUMBER <- as.integer(data$STREET_NUMBER)
+```
+
+```{r}
+#Now we are converting all the columns which has to be float datatype like longitude and latitude
+data$LOCATION_LATITUDE <- as.numeric(data$LOCATION_LATITUDE)
+data$LOCATION_LONGITUDE <- as.numeric(data$LOCATION_LONGITUDE)
+
+```
+
+Lets check all the data types again
+```{r}
+str(data)
+```
+
+All datatypes are converted lets find the summary of the dataset
+```{r}
+#Finding the descriptive statistics of the data by using summary function
+summary(data)
+```
+Creating one month column with this months value we can do some analysis on montly basis.
+```{r}
+#we create a month column
+month <- as.numeric(format(data$INCIDENT_DATETIME,'%m'))
+head(month)
+```
+```{r}
+#combining this month column with main dataset
+data <- cbind(data,month)
+```
+
+
+Now we remove some columns which are having mostly null values which are not relevant for our analysis.
+```{r}
+data <- subset(data, select = -c(TYPE_OF_FORCE_USED1,TYPE_OF_FORCE_USED2,TYPE_OF_FORCE_USED3,TYPE_OF_FORCE_USED4,TYPE_OF_FORCE_USED5,
+                                 TYPE_OF_FORCE_USED6,TYPE_OF_FORCE_USED7,TYPE_OF_FORCE_USED8,TYPE_OF_FORCE_USED9,TYPE_OF_FORCE_USED10,NUMBER_EC_CYCLES,
+                                 FORCE_EFFECTIVE,STREET_DIRECTION))
+
+
+```
+
+Now we fill na values
+```{r}
+data <- na.omit(data)
+
+```
+
+
+
+## Data Analysis
+
+lets find how many categorical features we have and how many unique values they have.
+```{r}
+# finding how many categories we have in a categorical columns
+cat_cols <- c("OFFICER_GENDER", "OFFICER_RACE", "OFFICER_INJURY", "OFFICER_INJURY_TYPE",
+              "OFFICER_HOSPITALIZATION", "SUBJECT_RACE", "SUBJECT_GENDER", "SUBJECT_INJURY",
+              "SUBJECT_INJURY_TYPE", "SUBJECT_WAS_ARRESTED", "SUBJECT_DESCRIPTION", "SUBJECT_OFFENSE",
+              "DIVISION", "LOCATION_DISTRICT", "STREET_NAME", "STREET_TYPE", "INCIDENT_REASON",
+              "REASON_FOR_FORCE", "TYPE_OF_FORCE_USED1", "FORCE_EFFECTIVE", "NUMBER_EC_CYCLES")
+
+for (col in cat_cols) {
+  cat_count <- length(unique(data[[col]]))
+  cat_info <- paste(col, ": ", cat_count, " unique categories")
+  print(cat_info)
+}
+```
+
+## Visualization
+Lets create some plots and charts to better visualize and analyze the dataset we use ggplot2 to do that first finding how many cases we have in year 2016 using time series plot
+
+```{r}
+#making the histogram to see the time series plot using datetime
+my_hist <- plot_ly(data, x = ~INCIDENT_DATETIME, type = "histogram", nbinsx = 30)
+
+my_hist <- layout(my_hist, xaxis = list(title = "Date"), yaxis = list(title = "Count"), title = "Time Series Histogram")
+
+my_hist
+```
+We can see that from 21st february to 6th march we have maximum cases of 144 from november to december we noticed that the cases are decreasing which means crime rate were going to be down after november. the start of 2017 was very good compare to 2016 there is a huge downfall of crimes can be seen in the graph.
+
+
+lets analyze some data of criminals and police separately
+
+### Police officer data
+
+```{r}
+#creating a plot to count the gender of officers
+gender_count <- data.frame(table(data$OFFICER_GENDER))
+
+my_plot <- plot_ly(gender_count, labels = ~Var1, values = ~Freq, type = "pie",
+             marker = list(colors = c("#38C4D0", "#026F78"), line = list(color = "#FFFFFF", width = 1))) %>%
+  layout(title = "Count of Officers by Gender")
+
+# Display the plot
+my_plot
+
+```
+It can be seen that there are maximum Male officers which were on the case where as female officers are very less.around 89.8% of the officers are males and rest of 10.2% are females.
+
+```{r}
+#creating a bar plot to see the count of officers by racial category
+race_count <- data.frame(table(data$OFFICER_RACE))
+
+my_plot <- plot_ly(race_count, x = ~Var1, y = ~Freq, type = "bar",
+             marker = list(color = "#1f77b4", opacity = 0.7)) %>%
+  layout(title = "Count of Officers by Racial categories",
+         xaxis = list(title = "Race"),
+         yaxis = list(title = "Count"))
+
+# Display the plot
+my_plot
+```
+Mostly officers belongs to the White racial category where as the American ind and asian were very less also wee need to see the gender of the officers for example: how many males officers are white and how many females
+
+```{r}
+# craeting two table graph to see the genders with respect to racial category
+race_gender_count <- data %>%
+  group_by(OFFICER_RACE, OFFICER_GENDER) %>%
+  summarize(n = n()) %>%
+  ungroup()
+
+ggplot(race_gender_count, aes(x = OFFICER_RACE, y = n, fill = OFFICER_GENDER)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("Officer Race") +
+  ylab("Count") +
+  ggtitle("Count of Officers by Racial Category and Gender") +
+  scale_fill_manual(values = c("#38C4D0", "#026F78")) +
+  theme_minimal()
+
+```
+We can see that maximum males and females belongs to white racial category as their is the possibility that they must be the citizens of USA where as in Hispanic and Black categories contains the same amount of women officer.
+
+
+In Every organization experience members are the pillars of that organization so on the same way lets check how many officers had how much experience.
+
+```{r}
+# finding the experience of the officers
+library(plotly)
+library(ggplot2)
+
+years_count <- data.frame(table(data$OFFICER_YEARS_ON_FORCE))
+
+# using ggplot to create bar chart
+ggplot(years_count, aes(x=Var1, y=Freq)) +
+  geom_bar(stat="identity", fill="#38C4D0") +
+  xlab("Years of Experience") +
+  ylab("Count") +
+  ggtitle("Count of Officers by Years of Experience") +
+  geom_text(aes(label=Freq), vjust=1.6, color="black", size=3.5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) -> p
+
+my_plot <- ggplotly(p, tooltip = c("x", "y"))
+
+# Customize the layout and hover info
+my_plot %>% 
+  layout(title = "Count of Officers by Years of Experience",
+         xaxis = list(title = "Years of Experience"),
+         yaxis = list(title = "Count"),
+         hovermode = "closest",
+         hovertemplate = paste('%{x}: %{y}<br>Total Count: ', sum(years_count$Freq)))
+
+```
+It can be seen that maximum police officers are fresh they have 2 to 3 years of experience. whereas the the people having more experience are very less in count. 
+
+Let see the count of officers work in each month
+
+```{r}
+# finding the count of officers with respect to each month
+officers_by_month <- data %>%
+  group_by(month) %>%
+  summarise(n = n_distinct(OFFICER_ID))
+
+# using plotly to make interactive bar plot 
+plot_ly(officers_by_month, x = ~month, y = ~n, type = "bar", 
+        hovertemplate = "Month: %{x}<br>Officer Count: %{y}") %>%
+  layout(title = "Count of Officers by Month",
+         xaxis = list(title = "Month"),
+         yaxis = list(title = "Officer Count"))
+```
+
+We can see that in the start of the year there were maximum police officers working but in the month of december there were less police officers who worked that might hapeen because of public holidays of cristmas. 
+
+lets find out which racial category wise officer experience.
+```{r}
+#creating a box plot to see the officer experience with respect to racial category
+library(viridis)
+color_palette <- viridis(6, alpha = 0.7)
+
+my_plot <- ggplot(data = data, aes(x = OFFICER_RACE, y = OFFICER_YEARS_ON_FORCE, fill = OFFICER_RACE)) +
+  geom_boxplot(color = "#757575", outlier.color = "#757575", alpha = 0.7) +
+  scale_fill_manual(values = color_palette) +
+  labs(x = "Officer Race", y = "Years on Force", title = "Years of Experience with respect to Officer Race") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "#757575"),
+        legend.background = element_rect(fill = "white", color = "white"),
+        legend.key = element_rect(fill = "white", color = "white"),
+        legend.position = "bottom",
+        legend.box = "horizontal")
+
+ggplotly(my_plot, tooltip = c("y", "fill"))
+
+```
+It can be seen that american ind are very less in quantity but the officers who has high experience belongs to this category.
+
+
+
+
+## Criminals
+
+Now let see the count of racial category of criminals that which category has most criminals.
+
+```{r}
+#Now let see the racial category of criminals 
+library(plotly)
+
+race_count <- data.frame(table(data$SUBJECT_RACE))
+
+my_plot <- plot_ly(race_count, x = ~Var1, y = ~Freq, type = "bar",
+             marker = list(color = "#1f77b4", opacity = 0.7)) %>%
+  layout(title = "Count of Criminals by Racial category",
+         xaxis = list(title = "Race"),
+         yaxis = list(title = "Count"))
+
+# printing result
+my_plot
+```
+It can be seen that mostly Black people committed crimes and Hispanic and white people are having some way around same ratio of crime.
+
+let find the genders of the criminals who committed crimes
+```{r}
+
+#finding count of criminals by racial category and gender
+race_gender_count <- data %>%
+  group_by(SUBJECT_RACE, SUBJECT_GENDER) %>%
+  summarize(n = n()) %>%
+  ungroup()
+
+ggplot(race_gender_count, aes(x = SUBJECT_RACE, y = n, fill = SUBJECT_GENDER)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("Criminal Race") +
+  ylab("Count") +
+  ggtitle("Count of Criminals by Racial Category and Gender") +
+  scale_fill_manual(values = c("#38C4D0", "#026F78","#6FEBEF", "#8FFCFF")) +
+  theme_minimal()
+```
+The male genders commited more crimes where as maximum womens also belongs to black racial category who commited more crimes.
+
+lets do correlation analysis between Incident Reason and Criminal Race
+```{r}
+# Create a contingency table between INCIDENT_REASON and SUBJECT_RACE
+table <- table(data$INCIDENT_REASON, data$SUBJECT_RACE)
+
+# Calculate the chi-squared test statistic and p-value
+chi_sq <- chisq.test(table)
+
+melted_table <- melt(table)
+
+# Create a heatmap of contingency table
+ggplot(melted_table, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "#F0F8FF", high = "#003366") +
+  theme_minimal() +
+  labs(x = "Subject Race", y = "Incident Reason", fill = "Count") +
+  ggtitle(paste("Chi-squared = ", round(chi_sq$statistic, 2), ", p-value = ", format.pval(chi_sq$p.value, digits = 2)))
+
+```
+According to a chi-square value of 98.77 and a p-value of 0.056.There is some evidence of a relationship between the two variables being examined, but not enough to reject the null hypothesis.
+
+
+lets find how many criminals and officers are injured during this year 2016
+
+```{r}
+# checking the comparision of criminal and officer injuries
+injury_count <- data.frame(
+  type = c("Criminal", "Officer"),
+  yes_count = c(sum(data$SUBJECT_INJURY == "Yes"), sum(data$OFFICER_INJURY == "Yes"))
+)
+
+# maing bar chart
+plot_ly(injury_count, x = ~type, y = ~yes_count, type = "bar", 
+        marker = list(color = c("#38C4D0", "#026F78"))) %>%
+  layout(title = "Comparison of Criminal and Officer Injuries", 
+         xaxis = list(title = "Injury Type"), 
+         yaxis = list(title = "Count of 'Yes' Injuries"))
+
+
+
+```
+It can be seen that criminals were getting more injured compare to police officers. 620 criminals and 229 officers were injured.
+
+
+IF there are more criminals then it is necessary to find what is the most frequent reason to use the force against criminal
+```{r}
+#finding the reason why force used
+reason_count <- data.frame(table(data$REASON_FOR_FORCE))
+
+my_plot <- plot_ly(reason_count, x = ~Var1, y = ~Freq, type = "bar") %>%
+  layout(title = "Count of Reasons for Use of Force",
+         xaxis = list(title = "Reason for Force"),
+         yaxis = list(title = "Count"))
+
+# printing the plot
+my_plot
+
+
+```
+The mostly cases are of arrest for which force needed to be used where as active aggression and danger to self or others are quit same.
+
+lets find on monthly basis how many criminals were get arrested by force
+
+```{r}
+#creating a line graph to see how many criminal arrested per month
+df_count <- data %>%
+  filter(SUBJECT_WAS_ARRESTED == "Yes") %>%
+  group_by(month) %>%
+  summarise(count = n())
+
+plot_ly(df_count, x = ~month, y = ~count, type = "scatter", mode = "lines+markers") %>%
+  layout(title = "Count of Arrested criminals per Month", xaxis = list(title = "Month"), yaxis = list(title = "Count of Arrested"))
+
+```
+it is clearly shown that initially the arresting trend was on its peak but the number of arresting was decreasing rapidly after september.
+
+Now lets analyze which Division has reported highest crime
+```{r}
+# Creating a pie chart to see the count of crimes in DIVISION
+gender_count <- data.frame(table(data$DIVISION))
+
+# Create an interactive pie chart using plotly
+my_plot <- plot_ly(gender_count, labels = ~Var1, values = ~Freq, type = "pie",
+             marker = list(colors = c("#38C4D0", "#026F78"), line = list(color = "#FFFFFF", width = 1))) %>%
+  layout(title = "Count of Crimes in Division in a year")
+
+my_plot
+```
+
+It can be seen that the central division reported the highest crime where as northwest has the lowest crime reported.Let se the trend of crimes in division in every month.
+
+```{r}
+
+# finding the count of division respect to each month
+division_month_count <- data %>% 
+  group_by(DIVISION, month) %>% 
+  summarize(count = n())
+
+# Create the line graph
+ggplot(division_month_count, aes(x = month, y = count, color = DIVISION)) +
+  geom_line(size = 1.5) +
+  scale_color_manual(values = c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(title = "Count of Division by Each Month", x = "Month", y = "Count") +
+  theme_minimal()
+
+```
+It can be seen that the central division has the highest crime rate from the beginning but we can see that by the time crime rate was coming down.
+
+lets figure out the location district with each division.
+```{r}
+# Group the data by "DIVISION", "LOCATION_DISTRICT", and "month" and calculate the count
+division_district_month_count <- data %>%
+  group_by(DIVISION, LOCATION_DISTRICT, month) %>%
+  summarize(count = n())
+
+# Create the plotly plot
+plot_ly(division_district_month_count, x = ~month, y = ~count, color = ~DIVISION, 
+        split = ~LOCATION_DISTRICT, type = "scatter", mode = "lines+markers") %>%
+  layout(title = "Count of Division in Location District by Month",
+         xaxis = list(title = "Month"), yaxis = list(title = "Count"),
+         legend = list(orientation = "h"))
+
+```
+it can be seen that all central division has the higher rate of crime report but specifically D14 experienced higher trend amongst all
+
+lets find out how many years of experience is good to reduce the crime
+```{r}
+# create a line graph to see the experience officer in each month they worked
+my_plot <- ggplot(data, aes(x = month, y = OFFICER_YEARS_ON_FORCE, group = 1)) +
+  geom_line(color = "#13979B", size = 2) +
+  labs(title = "Experience Officers in Force by Month",
+       x = "Month",
+       y = "Officer Years on Force") +
+  theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 1))
+
+my_plot <- ggplotly(my_plot)
+
+my_plot
+
+```
+It can be seen that the officers who have average 5 years or less experience that means they are young and have enough energy or potential to handle the crime and city situation.
+
+lets find what are the reasons why criminal are getting arrested.
+```{r}
+# finding the count of reason of arrrest
+gender_count <- data.frame(table(data$SUBJECT_DESCRIPTION))
+
+my_plot <- plot_ly(gender_count, labels = ~Var1, values = ~Freq, type = "pie",
+             marker = list(colors = c("#38C4D0", "#026F78"), line = list(color = "#FFFFFF", width = 1))) %>%
+  layout(title = "Count of Reasons")
+
+# Display the plot
+my_plot
+```
+The maximum crime reason was reported as the mental disability after that alcohol and after that the drugs these are the reason why they did crime.
+lets find the reason behind the incident
+
+```{r}
+# finding each category in incident reason
+reason_count <- data %>%
+  group_by(month, INCIDENT_REASON) %>%
+  summarise(count = n()) %>%
+  ungroup()
+
+my_plot <- plot_ly(reason_count, x = ~month, y = ~count, color = ~INCIDENT_REASON,
+             type = "scatter", mode = "lines+markers") %>%
+  layout(title = "Count of Incidents by Reason in a Year",
+         xaxis = list(title = "Month"),
+         yaxis = list(title = "Count"))
+
+my_plot
+
+```
+we can see that the major reason behind the incident was arrest and service call
+
+lets plot a scatter plot with longitude and lattitude to see the areas where incident happened.
+```{r}
+# Create a scatter plot using ggplot2
+my_plot <- ggplot(data, aes(LOCATION_LONGITUDE, LOCATION_LATITUDE,)) + 
+  geom_point(size = .75, alpha = 0.7, show.legend = FALSE) +
+  scale_color_manual(values = color_palette) +
+  labs(x = "Longitude", y = "Latitude", title = "Scatter plot of Incident Areas ") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+
+# Convert the ggplot object to plotly and add interactivity
+my_plot <- ggplotly(my_plot, tooltip = c("x", "y", "color")) %>%
+  labs(title = "Scatter plot of Incident Areas",
+       x = "Longitude",
+       y = "Latitude",
+       hoverlabel = list(bgcolor = "white", font = list(family = "Arial", size = 12)))
+
+my_plot
+
+```
+let use map to see to see these areas in a map view
+
+Lets plot the map using the longitude and latitudes points to see where those incident happened.
+```{r}
+
+# creating a map using longitude and lattitude
+m <- leaflet() %>% 
+  addProviderTiles("Esri.WorldTopoMap") %>% 
+  setView(lng = data$LOCATION_LONGITUDE[1], 
+          lat = data$LOCATION_LATITUDE[1], 
+          zoom = 10)
+
+# Add circles to the map for each point in the dataset
+m %>% addCircleMarkers(data = data, 
+                       lng = ~LOCATION_LONGITUDE, 
+                       lat = ~LOCATION_LATITUDE, 
+                       radius = 5, 
+                       color = "#3182bd", 
+                       fillOpacity = 0.7, 
+                       fillColor = "#9ecae1", 
+                       popup = ~paste("Location:", LOCATION_LATITUDE, LOCATION_LONGITUDE))
+
+```
+Here we can see the areas which are highlighted 
+
+# SUMMARY 
+
+The center of police Equity (CPE) used data science to build their system more fair. They analyze the data and locate those areas where racial discrimination exists and cannot be accounted by crime and poverty rates.
+
+By examining crime data from November 2016 to March 2017, it is evident that crime rates began to decline after the month of November, and 2017 started off to a far better start than 2016. The maximum number of incident reported from 21st February to 6th March, with a peak of 144 cases.When police officers are analyzed by their demographics, it becomes clear that 89.8% of them are male and only 10.2% are female. American Indian and Asian police are the least represented, and white officers make up the majority of the force.When examined the dataset it is clear that black people are the largest group of offenders, followed by Hispanic and white people. The majority of offenders are male and black female.
+
+With 620 criminals and 229 police officers suffering injuries in the same year, the data also demonstrates that criminals are more likely to suffer injuries than law enforcement officers.Arrest is the most prevalent justification for using force against criminals; active violence and danger to oneself or others are less frequent justifications. The data also demonstrates that, after September, the trend of forced arrests began to diminish.
+
+The central division reported the most crimes, and among all the districts, D14 had the greatest tendency of crime. Unexpectedly, it was shown that cops with an average tenure of 5 years or less were more successful in lowering crime.Finally, it was discovered that mental illness, followed by alcohol and drug abuse, was the most frequent cause of criminal conduct. Future actions and initiatives to lower crime rates can be influenced by knowing these causes of criminal behavior.
+
+Organizations like the CPE are aiming to establish more fair and just systems that bridge the gap between law enforcement and communities and eventually improve public safety, community trust, and racial justice by utilizing data and science to inform police policies.
+
+
+
